@@ -2,6 +2,7 @@ import io
 import traceback
 import logging
 import tempfile
+from time import perf_counter
 
 import grpc
 from concurrent import futures
@@ -22,6 +23,9 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
         from preconfigured_audio_processing import get_models, get_args
         get_models(get_args())
 
+        self.time_spent = 0
+        self.processed_n = 0
+
     def VideoFromAudio(self, request, context):  # noqa
         import io
         from preconfigured_audio_processing import generate, get_args
@@ -30,6 +34,8 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
         temp_dir = None
 
         try:
+            st = perf_counter()
+
             args = get_args()
             # Create Input Audio File
             audio_file = tempfile.NamedTemporaryFile(mode='ab+', suffix='.wav', delete=True)
@@ -41,9 +47,15 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
             temp_dir = tempfile.TemporaryDirectory(prefix='audio2vid-temp-')
             args.result_dir = temp_dir.name
 
-            result = generate(args)
-            with open(result, 'rb') as f:
-                return audio2video_pb2.VideoResponse(video_data=f.read())
+            video_path = generate(args)
+            with open(video_path, 'rb') as f:
+                response = audio2video_pb2.VideoResponse(video_data=f.read())
+
+            self.time_spent += perf_counter() - st
+            self.processed_n += 1
+            logger.info(f'Mean time taken: {int(self.time_spent / self.processed_n)} sec.')
+
+            return response
 
         except Exception as e:
             traceback.print_exc()
@@ -67,7 +79,7 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
 
 
 def serve():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
     audio2video_pb2_grpc.add_VideoFromAudioGeneratorServicer_to_server(VideoFromAudioGeneratorServicer(), server)
     server.add_insecure_port('[::]:50051')
     server.start()
