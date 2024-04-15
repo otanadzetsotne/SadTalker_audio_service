@@ -47,37 +47,137 @@ def get_args():
     return get_args.args
 
 
-def models():
-    if not getattr(models, 'data', False):
-        import shutil
+def get_models(args):
+    import os
+    import sys
+    from src.utils.init_path import init_path
+
+    # Init paths
+    print('Prepare models paths...')
+    current_root_path = os.path.split(sys.argv[0])[0]
+    sadtalker_paths = init_path(
+        args.checkpoint_dir,
+        os.path.join(current_root_path, 'src/config'),
+        args.size,
+        args.old_version,
+        args.preprocess,
+    )
+    sadtalker_paths_str = str(sadtalker_paths)
+    print('Done')
+
+    if not getattr(get_models, 'models', False):
+        get_models.models = {}
+
+    if sadtalker_paths_str not in get_models.models:
         import torch
-        from time import strftime
-        import os
-        import sys
 
         from src.utils.preprocess import CropAndExtract
         from src.test_audio2coeff import Audio2Coeff
         from src.facerender.animate import AnimateFromCoeff
-        from src.generate_batch import get_data
-        from src.generate_facerender_batch import get_facerender_data
-        from src.utils.init_path import init_path
 
-        args = get_args()
-
-        # === Init paths
-        current_root_path = os.path.split(sys.argv[0])[0]
-        sadtalker_paths = init_path(
-            args.checkpoint_dir,
-            os.path.join(current_root_path, 'src/config'),
-            args.size,
-            args.old_version,
-            args.preprocess,
-        )
-
-        # === Initialize models
+        # Initialize models
+        print('Initialize models...')
         preprocess_model = CropAndExtract(sadtalker_paths, args.device)
         audio_to_coeff = Audio2Coeff(sadtalker_paths, args.device)
         animate_from_coeff = AnimateFromCoeff(sadtalker_paths, args.device)
-        models.models = preprocess_model, audio_to_coeff, animate_from_coeff
+        print('Done')
 
-    return models.models
+        get_models.models[sadtalker_paths_str] = preprocess_model, audio_to_coeff, animate_from_coeff
+
+    return get_models.models[sadtalker_paths_str]
+
+
+def generate(args):
+    import shutil
+    from time import strftime
+    import os
+
+    from src.generate_batch import get_data
+    from src.generate_facerender_batch import get_facerender_data
+
+    preprocess_model, audio_to_coeff, animate_from_coeff = get_models(args)
+
+    save_dir = os.path.join(args.result_dir, strftime("%Y_%m_%d_%H.%M.%S"))
+    os.makedirs(save_dir, exist_ok=True)
+
+    # crop image and extract 3dmm from image
+    first_frame_dir = os.path.join(save_dir, 'first_frame_dir')
+    os.makedirs(first_frame_dir, exist_ok=True)
+    print('3DMM Extraction for source image')
+    first_coeff_path, crop_pic_path, crop_info = preprocess_model.generate(
+        args.source_image,
+        first_frame_dir,
+        args.preprocess,
+        source_image_flag=True,
+        pic_size=args.size,
+    )
+
+    if first_coeff_path is None:
+        print("Can't get the coefficients of the input")
+        return
+
+    if args.ref_eyeblink is not None:
+        ref_eye_blink_video_name = os.path.splitext(os.path.split(args.ref_eyeblink)[-1])[0]
+        ref_eye_blink_frame_dir = os.path.join(save_dir, ref_eye_blink_video_name)
+        os.makedirs(ref_eye_blink_frame_dir, exist_ok=True)
+        print('3DMM Extraction for the reference video providing eye blinking')
+        ref_eye_blink_coeff_path, _, _ = preprocess_model.generate(
+            args.ref_eyeblink,
+            ref_eye_blink_frame_dir,
+            args.preprocess,
+            source_image_flag=False,
+        )
+    else:
+        ref_eye_blink_coeff_path = None
+
+    if args.ref_pose is not None:
+        if args.ref_pose == args.ref_eyeblink:
+            ref_pose_coeff_path = ref_eye_blink_coeff_path
+        else:
+            ref_pose_video_name = os.path.splitext(os.path.split(args.ref_pose)[-1])[0]
+            ref_pose_frame_dir = os.path.join(save_dir, ref_pose_video_name)
+            os.makedirs(ref_pose_frame_dir, exist_ok=True)
+            print('3DMM Extraction for the reference video providing pose')
+            ref_pose_coeff_path, _, _ = preprocess_model.generate(
+                args.ref_pose,
+                ref_pose_frame_dir,
+                args.preprocess,
+                source_image_flag=False,
+            )
+    else:
+        ref_pose_coeff_path = None
+
+    # audio2coeff
+    batch = get_data(first_coeff_path, args.driven_audio, args.device, ref_eye_blink_coeff_path, still=args.still)
+    coeff_path = audio_to_coeff.generate(batch, save_dir, args.pose_style, ref_pose_coeff_path)
+
+    # 3dface render
+    if args.face3dvis:
+        from src.face3d.visualize import gen_composed_video
+        gen_composed_video(
+            args,
+            args.device,
+            first_coeff_path,
+            coeff_path,
+            args.driven_audio,
+            os.path.join(save_dir, '3dface.mp4'),
+        )
+
+    # coeff2video
+    data = get_facerender_data(coeff_path, crop_pic_path, first_coeff_path, args.driven_audio, args.batch_size,
+                               args.input_yaw, args.input_pitch, args.input_roll,
+                               expression_scale=args.expression_scale, still_mode=args.still,
+                               preprocess=args.preprocess, size=args.size)
+
+    result = animate_from_coeff.generate(data, save_dir, args.source_image, crop_info, enhancer=args.enhancer,
+                                         background_enhancer=args.background_enhancer, preprocess=args.preprocess,
+                                         img_size=args.size)
+
+    saved_video = save_dir+'.mp4'
+    shutil.move(result, saved_video)
+    print('The generated video is named:', saved_video)
+
+    if not args.verbose:
+        shutil.rmtree(save_dir)
+
+    return saved_video

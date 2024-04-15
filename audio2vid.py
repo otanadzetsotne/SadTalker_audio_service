@@ -1,5 +1,7 @@
+import io
 import traceback
 import logging
+import tempfile
 
 import grpc
 from concurrent import futures
@@ -15,24 +17,48 @@ logger = logging.getLogger()
 
 class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGeneratorServicer):
     def __init__(self, *args, **kwargs):
-        from preconfigured_audio_processing import models
-        print(f'{models()=}', flush=True)
         super().__init__(*args, **kwargs)
+        # Warm up models
+        from preconfigured_audio_processing import get_models, get_args
+        get_models(get_args())
 
     def VideoFromAudio(self, request, context):  # noqa
+        import io
+        from preconfigured_audio_processing import generate, get_args
+
+        audio_file = None
+        temp_dir = None
+
         try:
-            # video_data = video_generator.convert_audio_to_video(request.audio_data)
-            video_data = b'hello world'
-            logger.info('VideoFromAudio: success')
-            return audio2video_pb2.VideoResponse(video_data=video_data)
+            args = get_args()
+            # Create Input Audio File
+            audio_file = tempfile.NamedTemporaryFile(mode='ab+', suffix='.wav', delete=True)
+            audio_file.write(request.audio_data)
+            audio_file.flush()
+            audio_file.seek(0, 0)
+            args.driven_audio = audio_file.name
+            # Output Video File
+            temp_dir = tempfile.TemporaryDirectory(prefix='audio2vid-temp-')
+            args.result_dir = temp_dir.name
+
+            result = generate(args)
+            with open(result, 'rb') as f:
+                return audio2video_pb2.VideoResponse(video_data=f.read())
+
         except Exception as e:
             traceback.print_exc()
             logger.error(e)
 
+        finally:
+            if isinstance(audio_file, io.BytesIO):
+                audio_file.close()
+            if isinstance(temp_dir, tempfile.TemporaryDirectory):
+                temp_dir.cleanup()
+
     def CheckHealth(self, request, context):
         try:
-            from preconfigured_audio_processing import models
-            print(f'{models()=}', flush=True)
+            from preconfigured_audio_processing import get_models, get_args
+            print(f'{get_models(get_args())=}', flush=True)
             logger.info('CheckHealth: Service is alive')
             return audio2video_pb2.HealthCheckResponse(status='Service is alive')
         except Exception as e:
