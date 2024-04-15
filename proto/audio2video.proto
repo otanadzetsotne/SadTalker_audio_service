@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package video_from_audio_generator;
+
+// The gRPC service definition
+service VideoFromAudioGenerator {
+  // Sends audio data and receives a video file
+  rpc VideoFromAudio(AudioRequest) returns (VideoResponse);
+  rpc CheckHealth(HealthCheckRequest) returns (HealthCheckResponse);  // Added for health check
+}
+
+// Request message containing audio data
+message AudioRequest {
+  bytes audio_data = 1;
+}
+
+// Response message containing video data
+message VideoResponse {
+  bytes video_data = 1;
+}
+
+// Health Check Messages
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+}
