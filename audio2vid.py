@@ -14,6 +14,11 @@ logger = logging.getLogger()
 
 
 class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGeneratorServicer):
+    def __init__(self, *args, **kwargs):
+        from preconfigured_audio_processing import models
+        print(f'{models()=}', flush=True)
+        super().__init__(*args, **kwargs)
+
     def VideoFromAudio(self, request, context):  # noqa
         try:
             # video_data = video_generator.convert_audio_to_video(request.audio_data)
@@ -26,6 +31,8 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
 
     def CheckHealth(self, request, context):
         try:
+            from preconfigured_audio_processing import models
+            print(f'{models()=}', flush=True)
             logger.info('CheckHealth: Service is alive')
             return audio2video_pb2.HealthCheckResponse(status='Service is alive')
         except Exception as e:
