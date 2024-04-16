@@ -44,8 +44,9 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
             audio_file.seek(0, 0)
             args.driven_audio = audio_file.name
             # Output Video File
-            temp_dir = tempfile.TemporaryDirectory(prefix='audio2vid-temp-')
-            args.result_dir = temp_dir.name
+            if not args.result_dir:
+                temp_dir = tempfile.TemporaryDirectory(prefix='audio2vid-temp-')
+                args.result_dir = temp_dir.name
 
             video_path = generate(args)
             with open(video_path, 'rb') as f:

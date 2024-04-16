@@ -26,4 +26,4 @@ def run_audio2vid():
 
 
 if __name__ == '__main__':
-    run_audio2vid()
+    run_health_check()
