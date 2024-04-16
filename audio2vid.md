@@ -55,5 +55,5 @@ Server will run on `localhost` on `50051` port.
 
 To check if server is running properly, you can run:
 ```
-python sudio2vid_client_check.py
+python audio2vid_client_check.py
 ```
