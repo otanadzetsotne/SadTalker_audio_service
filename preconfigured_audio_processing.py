@@ -42,6 +42,7 @@ def get_args():
 
         args = parser.parse_args()
         args.device = 'cuda' if torch.cuda.is_available() and not args.cpu else 'cpu'
+        print(f'Active device: {args.device}', flush=True)
         get_args.args = args
 
     return get_args.args
