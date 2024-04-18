@@ -1,7 +1,9 @@
 import io
+import os.path
 import traceback
 import logging
 import tempfile
+from uuid import uuid4
 from time import perf_counter
 
 import grpc
@@ -37,17 +39,22 @@ class VideoFromAudioGeneratorServicer(audio2video_pb2_grpc.VideoFromAudioGenerat
             st = perf_counter()
 
             args = get_args()
-            # Create Input Audio File
-            audio_file = tempfile.NamedTemporaryFile(mode='ab+', suffix='.wav', delete=True)
-            audio_file.write(request.audio_data)
-            audio_file.flush()
-            audio_file.seek(0, 0)
-            args.driven_audio = audio_file.name
+
+            # Create TMP dir
+            temp_dir = tempfile.TemporaryDirectory(prefix='audio2vid-temp-')
+
+            # Create audio file with data
+            audio_file_name = f'{uuid4()}.wav'
+            audio_file = os.path.join(temp_dir.name, audio_file_name)
+            with open(audio_file, 'wb') as f:
+                f.write(request.audio_data)
+            args.driven_audio = audio_file
+
             # Output Video File
             if not args.result_dir:
-                temp_dir = tempfile.TemporaryDirectory(prefix='audio2vid-temp-')
                 args.result_dir = temp_dir.name
 
+            # Generate and save resulting video
             video_path = generate(args)
             with open(video_path, 'rb') as f:
                 response = audio2video_pb2.VideoResponse(video_data=f.read())
