@@ -9,7 +9,7 @@ def get_args():
         parser.add_argument('--ref_eyeblink', default=None, help='path to reference video providing eye blinking')
         parser.add_argument('--ref_pose', default=None, help='path to reference video providing pose')
         parser.add_argument('--checkpoint_dir', default='./checkpoints', help='path to output')
-        parser.add_argument('--result_dir', default='./results', help='path to output')
+        parser.add_argument('--result_dir', default=None, help='path to output')
         parser.add_argument('--pose_style', type=int, default=0, help='input pose style from [0, 46)')
         parser.add_argument('--batch_size', type=int, default=2, help='the batch size of facerender')
         parser.add_argument('--size', type=int, default=256, help='the image size of the facerender')
